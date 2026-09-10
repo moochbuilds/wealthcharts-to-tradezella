@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' blob:; base-uri 'none'; form-action 'none'">
+<title>WealthCharts → TradeZella Converter</title>
+<style>
+  :root{
+    --bg:#0f1216; --panel:#171b21; --panel2:#1e232b; --line:#2a313b;
+    --tx:#e6eaf0; --tx-dim:#98a2b3; --acc:#7c5cff; --acc2:#5b8cff;
+    --ok:#31c48d; --warn:#f5a524; --err:#f4577b;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--tx);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:28px 20px 80px}
+  header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+  h1{font-size:22px;margin:0;letter-spacing:-.2px}
+  h1 .arrow{color:var(--acc);margin:0 6px}
+  .sub{color:var(--tx-dim);font-size:13.5px;margin:0 0 22px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;margin-bottom:16px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--tx-dim);margin:0 0 14px;font-weight:600}
+
+  #drop{
+    border:1.5px dashed #39424e;border-radius:var(--radius);
+    padding:30px 20px;text-align:center;cursor:pointer;transition:.15s;background:var(--panel2)
+  }
+  #drop:hover,#drop.hot{border-color:var(--acc);background:#20222f}
+  #drop .big{font-size:15px;font-weight:600}
+  #drop .small{color:var(--tx-dim);font-size:13px;margin-top:4px}
+  #files{list-style:none;margin:12px 0 0;padding:0;font-size:13px}
+  #files li{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;margin-top:6px}
+  #files .x{color:var(--tx-dim);cursor:pointer;border:0;background:none;font-size:14px;padding:0 4px}
+  #files .x:hover{color:var(--err)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px}
+  label.f{display:block}
+  label.f span{display:block;font-size:12.5px;color:var(--tx-dim);margin-bottom:5px}
+  select,input[type=text],input[type=number],textarea{
+    width:100%;background:var(--panel2);color:var(--tx);border:1px solid var(--line);
+    border-radius:8px;padding:9px 10px;font:inherit;font-size:14px
+  }
+  select:focus,input:focus,textarea:focus{outline:2px solid var(--acc);outline-offset:-1px;border-color:transparent}
+  textarea{resize:vertical;min-height:62px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+  .checks{margin-top:14px;display:flex;flex-direction:column;gap:9px}
+  .chk{display:flex;align-items:flex-start;gap:9px;font-size:13.5px;cursor:pointer}
+  .chk input{margin:3px 0 0;accent-color:var(--acc);width:15px;height:15px}
+  .chk em{display:block;font-style:normal;color:var(--tx-dim);font-size:12.5px}
+
+  .btns{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}
+  button.b{
+    background:var(--acc);color:#fff;border:0;border-radius:9px;padding:11px 18px;
+    font:inherit;font-weight:600;font-size:14px;cursor:pointer;transition:.15s
+  }
+  button.b:hover{filter:brightness(1.12)}
+  button.b:disabled{opacity:.4;cursor:not-allowed;filter:none}
+  button.b.ghost{background:transparent;border:1px solid var(--line);color:var(--tx)}
+  button.b.ghost:hover{border-color:var(--acc);filter:none}
+  button.b.small{padding:7px 12px;font-size:13px;font-weight:500}
+
+  .stats{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:14px}
+  .stat b{display:block;font-size:21px;line-height:1.2}
+  .stat span{font-size:12px;color:var(--tx-dim)}
+  .msg{border-radius:9px;padding:10px 13px;font-size:13.5px;margin-top:9px;border:1px solid}
+  .msg.warn{background:rgba(245,165,36,.09);border-color:rgba(245,165,36,.35);color:#f7cd85}
+  .msg.err{background:rgba(244,87,123,.09);border-color:rgba(244,87,123,.35);color:#ffa8bd}
+  .msg.ok{background:rgba(49,196,141,.09);border-color:rgba(49,196,141,.32);color:#8ce0bd}
+  .msg.info{background:rgba(91,140,255,.08);border-color:rgba(91,140,255,.3);color:#a9c3ff}
+  .msg b{font-weight:600}
+
+  .tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:9px;max-height:420px;overflow-y:auto}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap}
+  th{position:sticky;top:0;background:var(--panel2);text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);color:var(--tx-dim);font-weight:600;z-index:1}
+  td{padding:7px 11px;border-bottom:1px solid rgba(42,49,59,.55)}
+  tr:last-child td{border-bottom:0}
+  td.buy{color:var(--ok)} td.sell{color:var(--err)}
+  .hidden{display:none}
+  footer{color:var(--tx-dim);font-size:12.5px;text-align:center;margin-top:26px;line-height:1.7}
+  code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:12px}
+  a{color:var(--acc2)}
+  ol.steps{margin:0;padding-left:20px;font-size:13.5px;color:var(--tx-dim)}
+  ol.steps li{margin-bottom:6px}
+  ol.steps b{color:var(--tx)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>WealthCharts <span class="arrow">&rarr;</span> TradeZella</h1></header>
+  <p class="sub">Drop your WealthCharts order export and get back a CSV in TradeZella's execution-based template. Everything runs in your browser &mdash; no data leaves this page.</p>
+
+  <div class="card">
+    <h2>1 &middot; Your WealthCharts export</h2>
+    <div id="drop">
+      <div class="big">Drop CSV files here, or click to browse</div>
+      <div class="small">Multiple files are merged and de-duplicated. You can also paste CSV text with Ctrl+V.</div>
+      <input type="file" id="picker" accept=".csv,.txt" multiple class="hidden">
+    </div>
+    <ul id="files"></ul>
+  </div>
+
+  <div class="card">
+    <h2>2 &middot; Settings</h2>
+    <div class="grid">
+      <label class="f"><span>Output time zone (match this in TradeZella)</span>
+        <select id="tz">
+          <option value="America/New_York">US/Eastern</option>
+          <option value="America/Chicago">US/Central</option>
+          <option value="America/Denver">US/Mountain</option>
+          <option value="America/Los_Angeles">US/Pacific</option>
+          <option value="UTC">UTC</option>
+        </select>
+      </label>
+      <label class="f"><span>Symbol style</span>
+        <select id="symstyle">
+          <option value="contract">Contract &mdash; MESU6</option>
+          <option value="root">Root only &mdash; MES</option>
+          <option value="raw">Leave untouched &mdash; CM.MESU6</option>
+        </select>
+      </label>
+      <label class="f"><span>Spread (asset type)</span>
+        <select id="spread">
+          <option value="Future">Future</option>
+          <option value="Stock">Stock</option>
+          <option value="Forex">Forex</option>
+          <option value="Crypto">Crypto</option>
+        </select>
+      </label>
+      <label class="f"><span>Commission per contract ($)</span>
+        <input type="number" id="comm" step="0.01" min="0" placeholder="0.00">
+      </label>
+      <label class="f"><span>Fees per contract ($)</span>
+        <input type="number" id="fees" step="0.01" min="0" placeholder="0.00">
+      </label>
+      <label class="f"><span>Symbol overrides (one per line, FROM=TO)</span>
+        <textarea id="overrides" placeholder="MESU6=MES&#10;MNQU6=MNQ"></textarea>
+      </label>
+    </div>
+    <div class="checks">
+      <label class="chk"><input type="checkbox" id="ledger">
+        <span>Skip orders I've already exported
+          <em>Remembers order IDs in this browser when you download, so tomorrow's export only produces new fills. <b id="ledgerCount">0</b> remembered <button type="button" class="b ghost small" id="clearLedger" style="margin-left:6px">Clear</button></em>
+        </span>
+      </label>
+      <label class="chk"><input type="checkbox" id="todayOnly">
+        <span>Only include the most recent trading day
+          <em>Useful if WealthCharts exports your full history every time.</em>
+        </span>
+      </label>
+    </div>
+    <div class="btns">
+      <button class="b" id="convert" disabled>Convert</button>
+      <button class="b ghost" id="loadSample">Load sample data</button>
+      <button class="b ghost" id="reset">Reset</button>
+    </div>
+  </div>
+
+  <div class="card hidden" id="out">
+    <h2>3 &middot; Result</h2>
+    <div class="stats" id="stats"></div>
+    <div id="messages"></div>
+    <div class="btns" style="margin-bottom:14px">
+      <button class="b" id="download">Download TradeZella CSV</button>
+      <button class="b ghost" id="copy">Copy to clipboard</button>
+    </div>
+    <div class="tablebox"><table id="preview"></table></div>
+    <p class="sub" style="margin:12px 0 0" id="previewNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Uploading to TradeZella</h2>
+    <ol class="steps">
+      <li>Add Trades &rarr; <b>Upload file</b>, choose the <b>Generic Template</b> importer.</li>
+      <li>Time zone: pick <b id="tzEcho">US/Eastern</b> &mdash; it must match the setting above.</li>
+      <li>Date Format: <b>MM/DD/YY</b>.</li>
+      <li>Upload under <b>Execution-based format</b> (one row per fill). The columns already match the template, so mapping should be automatic.</li>
+    </ol>
+  </div>
+
+  <footer>
+    Converts <code>mov_time</code> &rarr; Date/Time, sign of <code>exec_qty</code> &rarr; Buy/Sell, <code>|exec_qty|</code> &rarr; Quantity, <code>price_done</code> &rarr; Price.<br>
+    WealthCharts' <code>points</code> and <code>profit</code> columns are intentionally dropped &mdash; TradeZella recalculates P&amp;L from the executions.
+  </footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+function $(id){ return document.getElementById(id); }
+
+/* ---------- CSV ---------- */
+function parseCSV(text){
+  text = String(text).replace(/^﻿/,'');
+  var rows=[],row=[],f='',q=false,i,c;
+  for(i=0;i<text.length;i++){
+    c=text[i];
+    if(q){
+      if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false; }
+      else f+=c;
+    }else{
+      if(c==='"') q=true;
+      else if(c===','){ row.push(f); f=''; }
+      else if(c==='\n'){ row.push(f); rows.push(row); row=[]; f=''; }
+      else if(c!=='\r') f+=c;
+    }
+  }
+  if(f!=='' || row.length){ row.push(f); rows.push(row); }
+  return rows.filter(function(r){ return r.some(function(x){ return String(x).trim()!==''; }); });
+}
+function csvCell(v){
+  v = (v===null||v===undefined) ? '' : String(v);
+  return /[",\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+}
+
+/* ---------- dates ---------- */
+var MON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function parseWCTime(s){
+  s=String(s||'').trim();
+  if(!s) return null;
+  // "Tue Aug 25 2026 08:28:43 GMT-0700 (Pacific Daylight Time)"
+  var m=s.match(/([A-Za-z]{3})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*GMT\s*([+-])(\d{2}):?(\d{2})/);
+  if(m){
+    var mo=MON[m[1].toLowerCase()];
+    if(mo!==undefined){
+      var utc=Date.UTC(+m[3],mo,+m[2],+m[4],+m[5],+(m[6]||0));
+      var off=(m[7]==='-'?-1:1)*((+m[8])*60+(+m[9]));
+      return new Date(utc-off*60000);
+    }
+  }
+  var d=new Date(s);
+  return isNaN(d.getTime())?null:d;
+}
+var fmtCache={};
+function fmtParts(d,tz){
+  if(!fmtCache[tz]) fmtCache[tz]=new Intl.DateTimeFormat('en-US',{
+    timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',
+    hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'
+  });
+  var p=fmtCache[tz].formatToParts(d),o={};
+  p.forEach(function(x){ o[x.type]=x.value; });
+  if(o.hour==='24') o.hour='00';
+  return {
+    date:o.month+'/'+o.day+'/'+o.year.slice(-2),
+    time:o.hour+':'+o.minute+':'+o.second,
+    iso:o.year+'-'+o.month+'-'+o.day
+  };
+}
+function num(v){
+  if(v===null||v===undefined) return null;
+  var n=parseFloat(String(v).replace(/[$,\s]/g,''));
+  return isNaN(n)?null:n;
+}
+function trimNum(n,dp){
+  return String(parseFloat(Number(n).toFixed(dp===undefined?6:dp)));
+}
+
+/* ---------- symbols ---------- */
+function cleanSymbol(raw,style,overrides){
+  var s=String(raw||'').trim().toUpperCase();
+  if(style!=='raw'){
+    var dot=s.lastIndexOf('.');
+    if(dot>-1 && dot<s.length-1) s=s.slice(dot+1);
+  }
+  if(style==='root'){
+    var m=s.match(/^([A-Z]{1,4})[FGHJKMNQUVXZ]\d{1,2}$/);
+    if(m) s=m[1];
+  }
+  if(overrides[s]!==undefined) s=overrides[s];
+  return s;
+}
+function parseOverrides(txt){
+  var map={};
+  String(txt||'').split(/\n+/).forEach(function(line){
+    var parts=line.split('=');
+    if(parts.length===2 && parts[0].trim() && parts[1].trim()){
+      map[parts[0].trim().toUpperCase()]=parts[1].trim();
+    }
+  });
+  return map;
+}
+
+/* ---------- ledger of already-exported order ids ---------- */
+var LKEY='wc2tz.exported.v1';
+function ledgerGet(){
+  try{ return JSON.parse(localStorage.getItem(LKEY)||'[]'); }catch(e){ return []; }
+}
+function ledgerAdd(ids){
+  try{
+    var set={},cur=ledgerGet(),i;
+    for(i=0;i<cur.length;i++) set[cur[i]]=1;
+    for(i=0;i<ids.length;i++) set[ids[i]]=1;
+    var all=Object.keys(set);
+    if(all.length>20000) all=all.slice(all.length-20000);
+    localStorage.setItem(LKEY,JSON.stringify(all));
+  }catch(e){}
+  refreshLedgerCount();
+}
+function refreshLedgerCount(){ $('ledgerCount').textContent=ledgerGet().length; }
+
+/* ---------- settings persistence ---------- */
+var SKEY='wc2tz.settings.v1';
+var SETTINGS=['tz','symstyle','spread','comm','fees','overrides','ledger','todayOnly'];
+function saveSettings(){
+  var o={};
+  SETTINGS.forEach(function(id){
+    var el=$(id);
+    o[id]=(el.type==='checkbox')?el.checked:el.value;
+  });
+  try{ localStorage.setItem(SKEY,JSON.stringify(o)); }catch(e){}
+}
+function loadSettings(){
+  var o;
+  try{ o=JSON.parse(localStorage.getItem(SKEY)||'{}'); }catch(e){ o={}; }
+  SETTINGS.forEach(function(id){
+    if(o[id]===undefined) return;
+    var el=$(id);
+    if(el.type==='checkbox') el.checked=!!o[id]; else el.value=o[id];
+  });
+}
+
+/* ---------- conversion ---------- */
+var HEADERS=['Date&Time','Date','Time','Symbol','Buy/Sell','Quantity','Price','Spread','Expiration','Strike','Call/Put','Commission','Fees'];
+var ALIASES={
+  symbol:['symbol','ticker','instrument','contract'],
+  time:['mov_time','movtime','time','datetime','date_time','fill_time','exec_time','timestamp'],
+  qty:['exec_qty','execqty','qty','quantity','size','filled_qty','volume'],
+  price:['price_done','pricedone','price','fill_price','avg_price','exec_price'],
+  id:['order_id','orderid','id','trade_id','execution_id'],
+  fallbackTime:['created_on','createdon','date']
+};
+function mapHeader(head){
+  var idx={},lower=head.map(function(h){ return String(h||'').trim().toLowerCase(); });
+  Object.keys(ALIASES).forEach(function(k){
+    for(var i=0;i<ALIASES[k].length;i++){
+      var p=lower.indexOf(ALIASES[k][i]);
+      if(p>-1){ idx[k]=p; return; }
+    }
+  });
+  return idx;
+}
+
+function convert(sources,opts){
+  var out=[],errors=[],warnings=[],seen={},dupes=0,skippedLedger=0,skippedBad=0,total=0;
+  var overrides=parseOverrides(opts.overrides);
+  var ledgerSet={};
+  if(opts.useLedger) ledgerGet().forEach(function(id){ ledgerSet[id]=1; });
+
+  sources.forEach(function(src){
+    var rows=parseCSV(src.text);
+    if(!rows.length){ errors.push(src.name+': file is empty.'); return; }
+    var head=rows[0], idx=mapHeader(head);
+    if(idx.symbol===undefined || idx.qty===undefined || idx.price===undefined){
+      errors.push(src.name+': could not find the required columns (symbol, exec_qty, price_done). Header was: '+head.join(', '));
+      return;
+    }
+    if(idx.time===undefined && idx.fallbackTime===undefined){
+      errors.push(src.name+': no timestamp column (mov_time) found.');
+      return;
+    }
+    rows.slice(1).forEach(function(r,n){
+      total++;
+      var line=n+2;
+      var rawTime = (idx.time!==undefined) ? r[idx.time] : '';
+      if(!String(rawTime||'').trim() && idx.fallbackTime!==undefined) rawTime=r[idx.fallbackTime];
+      var d=parseWCTime(rawTime);
+      var qty=num(r[idx.qty]);
+      var price=num(r[idx.price]);
+      var sym=cleanSymbol(r[idx.symbol],opts.symstyle,overrides);
+      var oid=(idx.id!==undefined) ? String(r[idx.id]||'').trim() : '';
+
+      if(!d || qty===null || qty===0 || price===null || !sym){
+        skippedBad++;
+        if(warnings.length<6){
+          var why = !d ? 'unreadable timestamp "'+String(rawTime).slice(0,42)+'"'
+            : (qty===null||qty===0) ? ('quantity is '+(qty===null?'not a number':'zero'))
+            : (price===null) ? 'price is not a number' : 'missing symbol';
+          warnings.push(src.name+' line '+line+': skipped, '+why+'.');
+        }
+        return;
+      }
+
+      var p=fmtParts(d,opts.tz);
+      var key=oid||(p.iso+'|'+p.time+'|'+sym+'|'+qty+'|'+price);
+      if(seen[key]){ dupes++; return; }
+      seen[key]=1;
+      if(opts.useLedger && oid && ledgerSet[oid]){ skippedLedger++; return; }
+
+      var q=Math.abs(qty);
+      out.push({
+        ts:d.getTime(), oid:oid, isoDay:p.iso,
+        date:p.date, time:p.time, symbol:sym,
+        side:(qty>0?'Buy':'Sell'), qty:trimNum(q,4), price:trimNum(price,6),
+        spread:opts.spread,
+        commission:(opts.comm>0 ? trimNum(opts.comm*q,2) : ''),
+        fees:(opts.fees>0 ? trimNum(opts.fees*q,2) : '')
+      });
+    });
+  });
+
+  out.sort(function(a,b){ return (a.ts-b.ts) || a.symbol.localeCompare(b.symbol); });
+
+  if(opts.todayOnly && out.length){
+    var last=out[out.length-1].isoDay, before=out.length;
+    out=out.filter(function(r){ return r.isoDay===last; });
+    if(before!==out.length) warnings.push('Kept only '+last+' - dropped '+(before-out.length)+' row(s) from earlier days.');
+  }
+
+  var net={};
+  out.forEach(function(r){ net[r.symbol]=(net[r.symbol]||0)+(r.side==='Buy'?1:-1)*parseFloat(r.qty); });
+  Object.keys(net).forEach(function(s){
+    if(Math.abs(net[s])>1e-9){
+      warnings.push(s+' does not net to flat ('+(net[s]>0?'+':'')+trimNum(net[s],4)+
+        '). Expected if a position is still open, otherwise the export is missing fills.');
+    }
+  });
+  if(dupes) warnings.push(dupes+' duplicate row'+(dupes===1?'':'s')+' removed.');
+  if(skippedLedger) warnings.push(skippedLedger+' fill'+(skippedLedger===1?'':'s')+' skipped - already exported previously.');
+
+  return {rows:out,errors:errors,warnings:warnings,total:total,skippedBad:skippedBad,skippedLedger:skippedLedger,dupes:dupes};
+}
+
+function toCSV(rows){
+  var lines=[HEADERS.join(',')];
+  rows.forEach(function(r){
+    lines.push(['',r.date,r.time,r.symbol,r.side,r.qty,r.price,r.spread,'','','',r.commission,r.fees]
+      .map(csvCell).join(','));
+  });
+  return lines.join('\r\n')+'\r\n';
+}
+
+/* expose for tests */
+window.WC2TZ={parseCSV:parseCSV,parseWCTime:parseWCTime,convert:convert,toCSV:toCSV,cleanSymbol:cleanSymbol,fmtParts:fmtParts};
+
+/* ---------- UI ---------- */
+var FILES=[], RESULT=null;
+
+function esc(s){ return String(s).replace(/[&<>]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; }); }
+function msg(cls,html){ var d=document.createElement('div'); d.className='msg '+cls; d.innerHTML=html; return d; }
+
+function renderFiles(){
+  var ul=$('files'); ul.innerHTML='';
+  FILES.forEach(function(f,i){
+    var li=document.createElement('li');
+    var span=document.createElement('span');
+    span.textContent=f.name+'  -  '+Math.max(1,Math.round(f.text.length/1024))+' KB';
+    var b=document.createElement('button');
+    b.className='x'; b.type='button'; b.textContent='✕'; b.title='Remove';
+    b.onclick=function(e){ e.stopPropagation(); FILES.splice(i,1); renderFiles(); if(FILES.length) run(); else $('out').classList.add('hidden'); };
+    li.appendChild(span); li.appendChild(b); ul.appendChild(li);
+  });
+  $('convert').disabled = (FILES.length===0);
+}
+function addFiles(list){
+  var arr=Array.prototype.slice.call(list||[]);
+  var pending=arr.length;
+  if(!pending) return;
+  arr.forEach(function(file){
+    var rd=new FileReader();
+    rd.onload=function(){
+      FILES.push({name:file.name,text:String(rd.result)});
+      if(--pending===0){ renderFiles(); run(); }
+    };
+    rd.onerror=function(){ if(--pending===0){ renderFiles(); } };
+    rd.readAsText(file);
+  });
+}
+
+function run(){
+  if(!FILES.length) return;
+  saveSettings();
+  var opts={
+    tz:$('tz').value, symstyle:$('symstyle').value, spread:$('spread').value,
+    comm:num($('comm').value)||0, fees:num($('fees').value)||0,
+    overrides:$('overrides').value, useLedger:$('ledger').checked, todayOnly:$('todayOnly').checked
+  };
+  RESULT=convert(FILES,opts);
+  var r=RESULT;
+
+  $('out').classList.remove('hidden');
+  var symCount=Object.keys(r.rows.reduce(function(a,x){ a[x.symbol]=1; return a; },{})).length;
+  $('stats').innerHTML=
+    '<div class="stat"><b>'+r.rows.length+'</b><span>executions out</span></div>'+
+    '<div class="stat"><b>'+r.total+'</b><span>rows read</span></div>'+
+    '<div class="stat"><b>'+(r.dupes+r.skippedBad+r.skippedLedger)+'</b><span>rows skipped</span></div>'+
+    '<div class="stat"><b>'+symCount+'</b><span>symbols</span></div>';
+
+  var m=$('messages'); m.innerHTML='';
+  r.errors.forEach(function(e){ m.appendChild(msg('err',esc(e))); });
+  if(r.rows.length){
+    var tzName=$('tz').options[$('tz').selectedIndex].textContent;
+    m.appendChild(msg('info','In TradeZella set <b>Time zone = '+esc(tzName)+'</b> and <b>Date Format = MM/DD/YY</b>, then upload under <b>Execution-based format</b>.'));
+  }
+  r.warnings.forEach(function(w){ m.appendChild(msg('warn',esc(w))); });
+  if(!r.rows.length && !r.errors.length) m.appendChild(msg('warn','No executions to convert - everything was filtered out.'));
+
+  var head='<tr>'+HEADERS.map(function(h){ return '<th>'+esc(h)+'</th>'; }).join('')+'</tr>';
+  var body=r.rows.slice(0,200).map(function(x){
+    return '<tr><td></td><td>'+x.date+'</td><td>'+x.time+'</td><td>'+esc(x.symbol)+'</td>'+
+      '<td class="'+(x.side==='Buy'?'buy':'sell')+'">'+x.side+'</td><td>'+x.qty+'</td><td>'+x.price+'</td>'+
+      '<td>'+esc(x.spread)+'</td><td></td><td></td><td></td><td>'+x.commission+'</td><td>'+x.fees+'</td></tr>';
+  }).join('');
+  $('preview').innerHTML=head+body;
+  $('previewNote').textContent = (r.rows.length>200) ? ('Showing the first 200 of '+r.rows.length+' rows - the download contains all of them.') : '';
+  $('download').disabled = $('copy').disabled = (r.rows.length===0);
+}
+
+function filename(){
+  var rows=RESULT.rows;
+  if(!rows.length) return 'tradezella-import.csv';
+  var a=rows[0].isoDay, b=rows[rows.length-1].isoDay;
+  return 'tradezella-'+(a===b?a:(a+'_to_'+b))+'.csv';
+}
+function doDownload(){
+  if(!RESULT||!RESULT.rows.length) return;
+  var name=filename();
+  var blob=new Blob([toCSV(RESULT.rows)],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); },1500);
+  if($('ledger').checked){
+    ledgerAdd(RESULT.rows.map(function(r){ return r.oid; }).filter(Boolean));
+  }
+  $('messages').appendChild(msg('ok','Downloaded <b>'+esc(name)+'</b>'+
+    ($('ledger').checked?' - these order IDs are now remembered and will be skipped next time.':'')));
+}
+function fallbackCopy(txt){
+  var ta=document.createElement('textarea');
+  ta.value=txt; document.body.appendChild(ta); ta.select();
+  try{ document.execCommand('copy'); }catch(e){}
+  document.body.removeChild(ta);
+}
+
+$('drop').addEventListener('click',function(){ $('picker').click(); });
+$('picker').addEventListener('change',function(e){ addFiles(e.target.files); e.target.value=''; });
+['dragenter','dragover'].forEach(function(ev){
+  $('drop').addEventListener(ev,function(e){ e.preventDefault(); $('drop').classList.add('hot'); });
+});
+['dragleave','drop'].forEach(function(ev){
+  $('drop').addEventListener(ev,function(e){ e.preventDefault(); $('drop').classList.remove('hot'); });
+});
+$('drop').addEventListener('drop',function(e){ addFiles(e.dataTransfer.files); });
+document.addEventListener('paste',function(e){
+  var cd=e.clipboardData||window.clipboardData;
+  if(!cd) return;
+  var t=cd.getData('text');
+  if(t && t.indexOf(',')>-1 && t.indexOf('\n')>-1){
+    FILES.push({name:'pasted-'+(FILES.length+1)+'.csv',text:t});
+    renderFiles(); run();
+  }
+});
+$('convert').addEventListener('click',run);
+$('download').addEventListener('click',doDownload);
+$('copy').addEventListener('click',function(){
+  if(!RESULT||!RESULT.rows.length) return;
+  var txt=toCSV(RESULT.rows);
+  function done(){ $('messages').appendChild(msg('ok','CSV copied to clipboard.')); }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done,function(){ fallbackCopy(txt); done(); });
+  }else{ fallbackCopy(txt); done(); }
+});
+$('reset').addEventListener('click',function(){
+  FILES=[]; RESULT=null; renderFiles(); $('out').classList.add('hidden');
+});
+$('loadSample').addEventListener('click',function(){
+  FILES.push({name:'sample-wealthcharts.csv',text:
+    'name,order_id,symbol,mov_time,mov_type,exec_qty,price_done,points,profit,created_on\n'+
+    'DEMO000001,ORD-1003,CM.MESU6,Tue Aug 25 2026 08:28:43 GMT-0700 (Pacific Daylight Time),2,-2,7686,7.75,38.75,2026-08-25T14:52:21.000Z\n'+
+    'DEMO000001,ORD-1002,CM.MESU6,Tue Aug 25 2026 08:19:47 GMT-0700 (Pacific Daylight Time),2,-1,7682,3.75,18.75,2026-08-25T14:52:21.000Z\n'+
+    'DEMO000001,ORD-1001,CM.MESU6,Tue Aug 25 2026 07:52:22 GMT-0700 (Pacific Daylight Time),1,3,7678.25,,,2026-08-25T14:52:21.000Z\n'});
+  renderFiles(); run();
+});
+$('clearLedger').addEventListener('click',function(e){
+  e.preventDefault(); e.stopPropagation();
+  try{ localStorage.removeItem(LKEY); }catch(err){}
+  refreshLedgerCount();
+});
+SETTINGS.forEach(function(id){
+  $(id).addEventListener('change',function(){ saveSettings(); if(FILES.length) run(); });
+});
+$('tz').addEventListener('change',function(){
+  $('tzEcho').textContent=$('tz').options[$('tz').selectedIndex].textContent;
+});
+
+loadSettings();
+refreshLedgerCount();
+renderFiles();
+$('tzEcho').textContent=$('tz').options[$('tz').selectedIndex].textContent;
+})();
+</script>
+</body>
+</html>
