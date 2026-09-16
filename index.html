@@ -118,9 +118,9 @@
       </label>
       <label class="f"><span>Symbol style</span>
         <select id="symstyle">
-          <option value="contract">Contract &mdash; MESU6</option>
+          <option value="contract">Contract &mdash; MESZ6</option>
           <option value="root">Root only &mdash; MES</option>
-          <option value="raw">Leave untouched &mdash; CM.MESU6</option>
+          <option value="raw">Leave untouched &mdash; CM.MESZ6</option>
         </select>
       </label>
       <label class="f"><span>Spread (asset type)</span>
@@ -138,7 +138,7 @@
         <input type="number" id="fees" step="0.01" min="0" placeholder="0.00">
       </label>
       <label class="f"><span>Symbol overrides (one per line, FROM=TO)</span>
-        <textarea id="overrides" placeholder="MESU6=MES&#10;MNQU6=MNQ"></textarea>
+        <textarea id="overrides" placeholder="MESZ6=MES&#10;MNQZ6=MNQ"></textarea>
       </label>
     </div>
     <div class="checks">
@@ -571,9 +571,9 @@ $('reset').addEventListener('click',function(){
 $('loadSample').addEventListener('click',function(){
   FILES.push({name:'sample-wealthcharts.csv',text:
     'name,order_id,symbol,mov_time,mov_type,exec_qty,price_done,points,profit,created_on\n'+
-    'DEMO000001,ORD-1003,CM.MESU6,Tue Aug 25 2026 08:28:43 GMT-0700 (Pacific Daylight Time),2,-2,7686,7.75,38.75,2026-08-25T14:52:21.000Z\n'+
-    'DEMO000001,ORD-1002,CM.MESU6,Tue Aug 25 2026 08:19:47 GMT-0700 (Pacific Daylight Time),2,-1,7682,3.75,18.75,2026-08-25T14:52:21.000Z\n'+
-    'DEMO000001,ORD-1001,CM.MESU6,Tue Aug 25 2026 07:52:22 GMT-0700 (Pacific Daylight Time),1,3,7678.25,,,2026-08-25T14:52:21.000Z\n'});
+    'DEMO000001,ORD-1003,CM.MESZ6,Tue Aug 25 2026 08:28:43 GMT-0700 (Pacific Daylight Time),2,-2,7686,7.75,38.75,2026-08-25T14:52:21.000Z\n'+
+    'DEMO000001,ORD-1002,CM.MESZ6,Tue Aug 25 2026 08:19:47 GMT-0700 (Pacific Daylight Time),2,-1,7682,3.75,18.75,2026-08-25T14:52:21.000Z\n'+
+    'DEMO000001,ORD-1001,CM.MESZ6,Tue Aug 25 2026 07:52:22 GMT-0700 (Pacific Daylight Time),1,3,7678.25,,,2026-08-25T14:52:21.000Z\n'});
   renderFiles(); run();
 });
 $('clearLedger').addEventListener('click',function(e){

@@ -23,7 +23,7 @@ the CSV never leaves the machine, and the page makes no network calls at all.
 | `Date&Time` | — | left blank; `Date` + `Time` are used instead |
 | `Date` | `mov_time` | converted to the chosen output time zone, `MM/DD/YY` |
 | `Time` | `mov_time` | 24-hour `HH:MM:SS` |
-| `Symbol` | `symbol` | exchange prefix stripped: `CM.MESU6` → `MESU6` |
+| `Symbol` | `symbol` | exchange prefix stripped: `CM.MESZ6` → `MESZ6` |
 | `Buy/Sell` | sign of `exec_qty` | positive → `Buy`, negative → `Sell` |
 | `Quantity` | `abs(exec_qty)` | |
 | `Price` | `price_done` | |
@@ -42,9 +42,9 @@ per-contract rather than per-fill, which would be wrong on multi-contract exits.
 ## Options
 
 - **Output time zone** — must match the time zone selected in TradeZella.
-- **Symbol style** — full contract (`MESU6`), root only (`MES`), or untouched.
+- **Symbol style** — full contract (`MESZ6`), root only (`MES`), or untouched.
   If TradeZella doesn't recognise a contract symbol, try root, or use the
-  overrides box (`MESU6=MES`, one per line).
+  overrides box (`MESZ6=MES`, one per line).
 - **Commission / Fees per contract** — multiplied by quantity per fill.
 - **Skip orders I've already exported** — records order IDs in browser
   localStorage when you download, so the next day's export only yields new

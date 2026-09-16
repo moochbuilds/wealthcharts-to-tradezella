@@ -82,6 +82,8 @@ group('symbols');
   is(M.cleanSymbol('CM.MESU6', 'root', {}), 'MES', 'root only');
   is(M.cleanSymbol('CM.MESU6', 'raw', {}), 'CM.MESU6', 'untouched');
   is(M.cleanSymbol('CM.MESU6', 'contract', { MESU6: 'MES SEP26' }), 'MES SEP26', 'override applied');
+  is(M.cleanSymbol('CM.MESZ6', 'contract', {}), 'MESZ6', 'December contract kept');
+  is(M.cleanSymbol('CM.MNQZ6', 'root', {}), 'MNQ', 'December contract root only');
   is(run(SAMPLE, { symstyle: 'root' }).rows[0].symbol, 'MES', 'root style through convert()');
 }
 
