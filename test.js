@@ -26,12 +26,12 @@ global.localStorage = {
 global.$ = () => ({ textContent: '' });
 
 const M = new Function(
-  html.slice(a, b) + '; return {convert,toCSV,parseWCTime,parseTime,fmtParts,cleanSymbol,ledgerAdd,detectSource,sniff};'
+  html.slice(a, b) + '; return {convert,toCSV,parseWCTime,parseTime,fmtParts,cleanSymbol,frontMonth,ledgerAdd,detectSource,sniff};'
 )();
 
 const BASE = {
   tz: 'America/New_York', symstyle: 'contract', spread: 'Future',
-  comm: 0, fees: 0, overrides: '', useLedger: false, todayOnly: false,
+  comm: 0, fees: 0, overrides: '', useLedger: false, todayOnly: false, expiry: '',
 };
 const HEAD = 'name,order_id,symbol,mov_time,mov_type,exec_qty,price_done,points,profit';
 const wc = (rows) => HEAD + '\n' + rows.join('\n') + '\n';
@@ -161,18 +161,32 @@ const TS_SAMPLE = ts([
   is(r.errors, [], 'no errors');
   is(r.sources, ['tradesea'], 'source reported');
   is(lines(r), [
-    ',09/15/26,09:31:10,MES,Buy,3,6500.25,Future,,,,1.5,',
-    ',09/15/26,09:40:00,MES,Sell,1,6504,Future,,,,0.5,',
-    ',09/15/26,09:40:00,MES,Sell,1,6504,Future,,,,0.5,',
-    ',09/15/26,09:45:30,MES,Sell,1,6510,Future,,,,0.5,',
-  ], 'PDT -> ET, CME: prefix stripped, Side column used, per-fill commission kept, twin fills both kept');
+    ',09/15/26,09:31:10,MESZ6,Buy,3,6500.25,Future,,,,1.5,',
+    ',09/15/26,09:40:00,MESZ6,Sell,1,6504,Future,,,,0.5,',
+    ',09/15/26,09:40:00,MESZ6,Sell,1,6504,Future,,,,0.5,',
+    ',09/15/26,09:45:30,MESZ6,Sell,1,6510,Future,,,,0.5,',
+  ], 'PDT -> ET, CME:MES -> MESZ6, Side column used, per-fill commission kept, twin fills both kept');
   is([r.skippedStatus, r.rows.length], [1, 4], 'cancelled order dropped');
   is(r.warnings.filter((w) => w.indexOf('net') > -1), [], 'nets flat');
   is(run(TS_SAMPLE, { comm: 0.62 }).rows[0].commission, '1.86', 'commission setting overrides the export column');
   is(run(TS_SAMPLE, { fees: 0.35 }).rows[0].fees, '1.05', 'fees setting applies when export has no Fees column');
   is(run(TS_SAMPLE, { symstyle: 'raw' }).rows[0].symbol, 'CME:MES', 'raw keeps exchange prefix');
   is(run(TS_SAMPLE, { symstyle: 'root' }).rows[0].symbol, 'MES', 'root style');
-  is(M.cleanSymbol('CME:MES1!', 'contract', {}), 'MES', 'continuous-contract suffix stripped');
+  is(M.cleanSymbol('CME:MES1!', 'contract', {}, 'Z6'), 'MESZ6', 'continuous-contract suffix replaced by month code');
+  is(M.cleanSymbol('CME:MES', 'contract', {}, ''), 'MES', 'no month code when none is known');
+  is(M.cleanSymbol('CM.MESU6', 'contract', {}, 'Z6'), 'MESU6', 'a symbol that already has a month code is left alone');
+  is(M.cleanSymbol('CME:MES', 'contract', { MES: 'MES DEC26' }, 'Z6'), 'MES DEC26', 'override on the root wins');
+  is(M.cleanSymbol('CME:MES', 'contract', { MESZ6: 'MESZ26' }, 'Z6'), 'MESZ26', 'override on the built contract also works');
+  is(run(TS_SAMPLE, { expiry: 'h7' }).rows[0].symbol, 'MESH7', 'contract month setting overrides the front month');
+  const badExp = run(TS_SAMPLE, { expiry: 'dec' });
+  is([badExp.rows[0].symbol, badExp.warnings.some((w) => w.indexOf('not a valid code') > -1)], ['MESZ6', true], 'invalid month code falls back with a warning');
+  is(run(TS_SAMPLE, { spread: 'Stock' }).rows[0].symbol, 'MES', 'no month code appended for non-futures');
+
+  is(M.frontMonth('2026-10-07'), 'Z6', 'Oct 7 2026 -> Dec (Z6)');
+  is(M.frontMonth('2026-09-10'), 'U6', 'roll Thursday Sep 10 2026 still Sep (U6)');
+  is(M.frontMonth('2026-09-12'), 'Z6', 'Saturday after roll -> Dec (Z6)');
+  is(M.frontMonth('2026-12-18'), 'H7', 'Dec expiry day -> Mar 2027 (H7)');
+  is(M.frontMonth('2027-01-04'), 'H7', 'early Jan -> Mar (H7)');
 
   const twice = M.convert([{ name: 'a', text: TS_SAMPLE }, { name: 'b', text: TS_SAMPLE }], BASE);
   is([twice.rows.length, twice.dupes], [4, 4], 'same file twice dedupes without an order id');
@@ -181,7 +195,7 @@ const TS_SAMPLE = ts([
   is([mixed.rows.length, mixed.sources], [7, ['wealthcharts', 'tradesea']], 'WealthCharts + Tradesea in one run');
 
   const winter = run(ts(['"1/12/2026, 6:30:00 AM PST","CME:MNQ","1","Buy","Market","","","21000","0.5","Filled"']));
-  is(lines(winter)[0].slice(0, 22), ',01/12/26,09:30:00,MNQ', 'PST -> EST in winter');
+  is(lines(winter)[0].slice(0, 24), ',01/12/26,09:30:00,MNQH6', 'PST -> EST in winter');
 
   const pm = run(ts(['"1/12/2026, 12:05:00 PM PST","CME:MNQ","1","Buy","Market","","","21000","0.5","Filled"']));
   is(pm.rows[0].time, '15:05:00', '12:05 PM handled');

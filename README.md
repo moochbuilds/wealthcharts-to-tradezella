@@ -50,7 +50,7 @@ Tradesea's order export looks like:
 | TradeZella | Tradesea | Notes |
 | --- | --- | --- |
 | `Date` / `Time` | `Time` | `M/D/YYYY, h:mm:ss AM/PM TZ`; the zone abbreviation (PDT, PST, EDT, CT, …) is honoured, then converted to the output zone. A zone-less time is read in the output zone and a warning is shown |
-| `Symbol` | `Symbol` | exchange prefix stripped: `CME:MES` → `MES`. Tradesea only exports the root, so "Contract" and "Root" styles give the same result |
+| `Symbol` | `Symbol` | exchange prefix stripped and the front-month code appended: `CME:MES` → `MESZ6`. TradeZella reads the expiration from a futures symbol and rejects a bare root with "Missing required column(s): Expiration", so in Contract style a quarterly H/M/U/Z code is added based on the trade date (rolls the Saturday after roll Thursday). Set **Contract month** to force a code (e.g. `Z6`), or use the overrides box for non-quarterly products |
 | `Buy/Sell` | `Side` | `Buy` / `Sell` |
 | `Quantity` | `Qty` | |
 | `Price` | `Avg Price` | falls back to `Limit Price` if blank |
@@ -78,7 +78,11 @@ per-contract rather than per-fill, which would be wrong on multi-contract exits.
 - **Symbol style** — full contract (`MESZ6`), root only (`MES`), or untouched.
   If TradeZella doesn't recognise a contract symbol, try root, or use the
   overrides box (`MESZ6=MES`, one per line).
-- **Commission / Fees per contract** — multiplied by quantity per fill.
+- **Contract month for root-only symbols** — month code appended to a bare
+  root such as Tradesea's `MES`. Blank picks the front quarterly month from the
+  trade date.
+- **Commission / Fees per contract** — multiplied by quantity per fill. Blank
+  uses the export's own column when it has one (Tradesea does).
 - **Skip orders I've already exported** — records order IDs (WealthCharts) or a
   fingerprint of each fill (Tradesea) in browser localStorage when you download,
   so the next day's export only yields new fills. Per-browser; clear it any time.

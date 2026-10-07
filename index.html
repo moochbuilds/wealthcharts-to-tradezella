@@ -119,12 +119,15 @@
           <option value="UTC">UTC</option>
         </select>
       </label>
-      <label class="f"><span>Symbol style (Tradesea exports only carry the root, e.g. MES)</span>
+      <label class="f"><span>Symbol style</span>
         <select id="symstyle">
-          <option value="contract">Contract &mdash; MESZ6</option>
+          <option value="contract">Contract &mdash; MESZ6 (TradeZella needs this for futures)</option>
           <option value="root">Root only &mdash; MES</option>
           <option value="raw">Leave untouched &mdash; CM.MESZ6 / CME:MES</option>
         </select>
+      </label>
+      <label class="f"><span>Contract month for root-only symbols (Tradesea exports MES, not MESZ6)</span>
+        <input type="text" id="expiry" maxlength="3" placeholder="auto &mdash; front month, e.g. Z6" autocomplete="off" spellcheck="false">
       </label>
       <label class="f"><span>Spread (asset type)</span>
         <select id="spread">
@@ -190,7 +193,7 @@
     <b>WealthCharts:</b> <code>mov_time</code> &rarr; Date/Time, sign of <code>exec_qty</code> &rarr; Buy/Sell, <code>|exec_qty|</code> &rarr; Quantity, <code>price_done</code> &rarr; Price.
     <code>points</code> and <code>profit</code> are intentionally dropped &mdash; TradeZella recalculates P&amp;L from the executions.<br>
     <b>Tradesea:</b> <code>Time</code> &rarr; Date/Time, <code>Side</code> &rarr; Buy/Sell, <code>Qty</code> &rarr; Quantity, <code>Avg Price</code> &rarr; Price, <code>Commission</code> &rarr; Commission.
-    Only rows with Status <code>Filled</code> are used; <code>CME:MES</code> becomes <code>MES</code>.
+    Only rows with Status <code>Filled</code> are used. <code>CME:MES</code> becomes <code>MESZ6</code> &mdash; TradeZella rejects a bare root for futures, so the front-month code is appended (or the one you set above).
   </footer>
 </div>
 
@@ -313,7 +316,9 @@ function trimNum(n,dp){
 }
 
 /* ---------- symbols ---------- */
-function cleanSymbol(raw,style,overrides){
+/* expiry: month code (e.g. "Z6") appended to a bare root like "MES" in contract style.
+   TradeZella reads the expiration from the futures symbol and rejects a root alone. */
+function cleanSymbol(raw,style,overrides,expiry){
   var s=String(raw||'').trim().toUpperCase();
   if(style!=='raw'){
     // exchange prefix: WealthCharts "CM.MESZ6", Tradesea "CME:MES"
@@ -325,8 +330,32 @@ function cleanSymbol(raw,style,overrides){
     var m=s.match(/^([A-Z]{1,4})[FGHJKMNQUVXZ]\d{1,2}$/);
     if(m) s=m[1];
   }
-  if(overrides[s]!==undefined) s=overrides[s];
+  if(overrides[s]!==undefined) return overrides[s];
+  if(style==='contract' && expiry && /^[A-Z]{1,4}$/.test(s)){
+    s+=expiry;
+    if(overrides[s]!==undefined) return overrides[s];
+  }
   return s;
+}
+/* Front-month code for quarterly index futures (H/M/U/Z) on a given 'YYYY-MM-DD'.
+   Expiry is the 3rd Friday; the contract rolls to the next quarter the Saturday after roll Thursday. */
+function thirdFriday(y,m){
+  var dow=new Date(Date.UTC(y,m,1)).getUTCDay();
+  return Date.UTC(y,m,((5-dow+7)%7)+1+14);
+}
+var QCODE={2:'H',5:'M',8:'U',11:'Z'};
+function frontMonth(isoDay){
+  var y=+isoDay.slice(0,4), m=+isoDay.slice(5,7)-1, t=Date.UTC(y,m,+isoDay.slice(8,10));
+  var qm=Math.ceil((m+1)/3)*3-1;   // 2,5,8,11
+  for(var i=0;i<8;i++){
+    if(t<thirdFriday(y,qm)-6*86400000) return QCODE[qm]+String(y%10);
+    qm+=3; if(qm>11){ qm=2; y++; }
+  }
+  return '';
+}
+function parseExpiry(v){
+  var s=String(v||'').trim().toUpperCase();
+  return /^[FGHJKMNQUVXZ]\d{1,2}$/.test(s) ? s : '';
 }
 function parseOverrides(txt){
   var map={};
@@ -359,7 +388,7 @@ function refreshLedgerCount(){ $('ledgerCount').textContent=ledgerGet().length; 
 
 /* ---------- settings persistence ---------- */
 var SKEY='wc2tz.settings.v1';
-var SETTINGS=['tz','symstyle','spread','comm','fees','overrides','ledger','todayOnly'];
+var SETTINGS=['tz','symstyle','spread','expiry','comm','fees','overrides','ledger','todayOnly'];
 function saveSettings(){
   var o={};
   SETTINGS.forEach(function(id){
@@ -429,6 +458,8 @@ function convert(sources,opts){
   var out=[],errors=[],warnings=[],seen={},sourcesSeen={};
   var dupes=0,skippedLedger=0,skippedBad=0,skippedStatus=0,naive=0,total=0;
   var overrides=parseOverrides(opts.overrides);
+  var fixedExpiry=parseExpiry(opts.expiry);
+  if(String(opts.expiry||'').trim() && !fixedExpiry) warnings.push('Contract month "'+String(opts.expiry).trim()+'" is not a valid code like Z6 - using the front month instead.');
   var ledgerSet={};
   if(opts.useLedger) ledgerGet().forEach(function(id){ ledgerSet[id]=1; });
 
@@ -464,7 +495,11 @@ function convert(sources,opts){
       var price=num(r[idx.price]);
       if(price===null && idx.fallbackPrice!==undefined) price=num(r[idx.fallbackPrice]);
       var rawSym=String(r[idx.symbol]||'').trim().toUpperCase();
-      var sym=cleanSymbol(rawSym,opts.symstyle,overrides);
+      var expiry='';
+      if(opts.symstyle==='contract' && opts.spread==='Future'){
+        expiry=fixedExpiry || (d ? frontMonth(fmtParts(d,opts.tz).iso) : '');
+      }
+      var sym=cleanSymbol(rawSym,opts.symstyle,overrides,expiry);
       var oid=(idx.id!==undefined) ? String(r[idx.id]||'').trim() : '';
       var side = (idx.side!==undefined) ? parseSide(r[idx.side])
                : (qty===null||qty===0) ? null : (qty>0?'Buy':'Sell');
@@ -546,7 +581,7 @@ function toCSV(rows){
 }
 
 /* expose for tests */
-window.WC2TZ={parseCSV:parseCSV,parseWCTime:parseWCTime,parseTime:parseTime,convert:convert,toCSV:toCSV,cleanSymbol:cleanSymbol,fmtParts:fmtParts,detectSource:detectSource,sniff:sniff};
+window.WC2TZ={parseCSV:parseCSV,parseWCTime:parseWCTime,parseTime:parseTime,convert:convert,toCSV:toCSV,cleanSymbol:cleanSymbol,frontMonth:frontMonth,fmtParts:fmtParts,detectSource:detectSource,sniff:sniff};
 
 /* ---------- UI ---------- */
 var FILES=[], RESULT=null;
@@ -591,7 +626,7 @@ function run(){
   if(!FILES.length) return;
   saveSettings();
   var opts={
-    tz:$('tz').value, symstyle:$('symstyle').value, spread:$('spread').value,
+    tz:$('tz').value, symstyle:$('symstyle').value, spread:$('spread').value, expiry:$('expiry').value,
     comm:num($('comm').value)||0, fees:num($('fees').value)||0,
     overrides:$('overrides').value, useLedger:$('ledger').checked, todayOnly:$('todayOnly').checked
   };
