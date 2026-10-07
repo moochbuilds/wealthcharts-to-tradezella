@@ -26,7 +26,7 @@ global.localStorage = {
 global.$ = () => ({ textContent: '' });
 
 const M = new Function(
-  html.slice(a, b) + '; return {convert,toCSV,parseWCTime,fmtParts,cleanSymbol,ledgerAdd};'
+  html.slice(a, b) + '; return {convert,toCSV,parseWCTime,parseTime,fmtParts,cleanSymbol,ledgerAdd,detectSource,sniff};'
 )();
 
 const BASE = {
@@ -142,6 +142,67 @@ group('open position detection');
     'X,C2,CM.MESU6,Tue Aug 25 2026 09:00:00 GMT-0700 (PDT),2,-1,7690,,',
   ]));
   is(r.warnings.length === 1 && r.warnings[0].indexOf('+2') > -1, true, 'flags the +2 that never got closed');
+}
+
+group('Tradesea export');
+const TS_HEAD = '"Time","Symbol","Qty","Side","Order Type","Limit Price","Stop Price","Avg Price","Commission","Status"';
+const ts = (rows) => TS_HEAD + '\n' + rows.join('\n') + '\n';
+const TS_SAMPLE = ts([
+  '"9/15/2026, 6:45:30 AM PDT","CME:MES","1","Sell","Limit","6510","","6510","0.5","Filled"',
+  '"9/15/2026, 6:40:00 AM PDT","CME:MES","1","Sell","Limit","6504","","6504","0.5","Filled"',
+  '"9/15/2026, 6:40:00 AM PDT","CME:MES","1","Sell","Limit","6504","","6504","0.5","Filled"',
+  '"9/15/2026, 6:38:12 AM PDT","CME:MES","1","Buy","Limit","6490","","","","Cancelled"',
+  '"9/15/2026, 6:31:10 AM PDT","CME:MES","3","Buy","Market","","","6500.25","1.5","Filled"',
+]);
+{
+  is(M.sniff(TS_SAMPLE), 'tradesea', 'header is recognised as Tradesea');
+  is(M.sniff(SAMPLE), 'wealthcharts', 'WealthCharts header still recognised');
+  const r = run(TS_SAMPLE);
+  is(r.errors, [], 'no errors');
+  is(r.sources, ['tradesea'], 'source reported');
+  is(lines(r), [
+    ',09/15/26,09:31:10,MES,Buy,3,6500.25,Future,,,,1.5,',
+    ',09/15/26,09:40:00,MES,Sell,1,6504,Future,,,,0.5,',
+    ',09/15/26,09:40:00,MES,Sell,1,6504,Future,,,,0.5,',
+    ',09/15/26,09:45:30,MES,Sell,1,6510,Future,,,,0.5,',
+  ], 'PDT -> ET, CME: prefix stripped, Side column used, per-fill commission kept, twin fills both kept');
+  is([r.skippedStatus, r.rows.length], [1, 4], 'cancelled order dropped');
+  is(r.warnings.filter((w) => w.indexOf('net') > -1), [], 'nets flat');
+  is(run(TS_SAMPLE, { comm: 0.62 }).rows[0].commission, '1.86', 'commission setting overrides the export column');
+  is(run(TS_SAMPLE, { fees: 0.35 }).rows[0].fees, '1.05', 'fees setting applies when export has no Fees column');
+  is(run(TS_SAMPLE, { symstyle: 'raw' }).rows[0].symbol, 'CME:MES', 'raw keeps exchange prefix');
+  is(run(TS_SAMPLE, { symstyle: 'root' }).rows[0].symbol, 'MES', 'root style');
+  is(M.cleanSymbol('CME:MES1!', 'contract', {}), 'MES', 'continuous-contract suffix stripped');
+
+  const twice = M.convert([{ name: 'a', text: TS_SAMPLE }, { name: 'b', text: TS_SAMPLE }], BASE);
+  is([twice.rows.length, twice.dupes], [4, 4], 'same file twice dedupes without an order id');
+
+  const mixed = M.convert([{ name: 'wc', text: SAMPLE }, { name: 'ts', text: TS_SAMPLE }], BASE);
+  is([mixed.rows.length, mixed.sources], [7, ['wealthcharts', 'tradesea']], 'WealthCharts + Tradesea in one run');
+
+  const winter = run(ts(['"1/12/2026, 6:30:00 AM PST","CME:MNQ","1","Buy","Market","","","21000","0.5","Filled"']));
+  is(lines(winter)[0].slice(0, 22), ',01/12/26,09:30:00,MNQ', 'PST -> EST in winter');
+
+  const pm = run(ts(['"1/12/2026, 12:05:00 PM PST","CME:MNQ","1","Buy","Market","","","21000","0.5","Filled"']));
+  is(pm.rows[0].time, '15:05:00', '12:05 PM handled');
+
+  const naive = run(ts(['"9/15/2026, 6:31:10 AM","CME:MES","1","Buy","Market","","","6500","0.5","Filled"']));
+  is(naive.rows[0].time, '06:31:10', 'zone-less time is read in the output zone');
+  is(naive.warnings.some((w) => w.indexOf('no time zone') > -1), true, 'and a warning says so');
+
+  const badSide = run(ts(['"9/15/2026, 6:31:10 AM PDT","CME:MES","1","Hold","Market","","","6500","0.5","Filled"']));
+  is([badSide.rows.length, badSide.skippedBad], [0, 1], 'unknown side is skipped');
+  is(badSide.warnings[0].indexOf('side') > -1, true, 'with a reason');
+
+  const bom = run('﻿' + TS_SAMPLE);
+  is(bom.rows.length, 4, 'UTF-8 BOM tolerated');
+
+  M.ledgerAdd(run(TS_SAMPLE).rows.map((x) => x.key));
+  const led = run(TS_SAMPLE, { useLedger: true });
+  is([led.rows.length, led.skippedLedger], [0, 4], 'ledger works without order ids');
+  const ledTz = run(TS_SAMPLE, { useLedger: true, tz: 'America/Chicago' });
+  is(ledTz.skippedLedger, 4, 'ledger keys do not depend on the output time zone');
+  localStorage.removeItem('wc2tz.exported.v1');
 }
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' blob:; base-uri 'none'; form-action 'none'">
-<title>WealthCharts → TradeZella Converter</title>
+<title>WealthCharts &amp; Tradesea → TradeZella Converter</title>
 <style>
   :root{
     --bg:#0f1216; --panel:#171b21; --panel2:#1e232b; --line:#2a313b;
@@ -38,6 +38,9 @@
   #files li{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;margin-top:6px}
   #files .x{color:var(--tx-dim);cursor:pointer;border:0;background:none;font-size:14px;padding:0 4px}
   #files .x:hover{color:var(--err)}
+  #files .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{display:inline-block;font-size:11px;line-height:1.6;padding:0 8px;border-radius:999px;background:rgba(124,92,255,.18);color:#c9bbff;white-space:nowrap}
+  .badge.unknown{background:rgba(244,87,123,.14);color:#ffa8bd}
 
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px}
   label.f{display:block}
@@ -91,14 +94,14 @@
 </head>
 <body>
 <div class="wrap">
-  <header><h1>WealthCharts <span class="arrow">&rarr;</span> TradeZella</h1></header>
-  <p class="sub">Drop your WealthCharts order export and get back a CSV in TradeZella's execution-based template. Everything runs in your browser &mdash; no data leaves this page.</p>
+  <header><h1>WealthCharts &amp; Tradesea <span class="arrow">&rarr;</span> TradeZella</h1></header>
+  <p class="sub">Drop a WealthCharts or Tradesea order export and get back a CSV in TradeZella's execution-based template. The format is detected automatically. Everything runs in your browser &mdash; no data leaves this page.</p>
 
   <div class="card">
-    <h2>1 &middot; Your WealthCharts export</h2>
+    <h2>1 &middot; Your WealthCharts or Tradesea export</h2>
     <div id="drop">
       <div class="big">Drop CSV files here, or click to browse</div>
-      <div class="small">Multiple files are merged and de-duplicated. You can also paste CSV text with Ctrl+V.</div>
+      <div class="small">WealthCharts and Tradesea files can be mixed. Multiple files are merged and de-duplicated. You can also paste CSV text with Ctrl+V.</div>
       <input type="file" id="picker" accept=".csv,.txt" multiple class="hidden">
     </div>
     <ul id="files"></ul>
@@ -116,11 +119,11 @@
           <option value="UTC">UTC</option>
         </select>
       </label>
-      <label class="f"><span>Symbol style</span>
+      <label class="f"><span>Symbol style (Tradesea exports only carry the root, e.g. MES)</span>
         <select id="symstyle">
           <option value="contract">Contract &mdash; MESZ6</option>
           <option value="root">Root only &mdash; MES</option>
-          <option value="raw">Leave untouched &mdash; CM.MESZ6</option>
+          <option value="raw">Leave untouched &mdash; CM.MESZ6 / CME:MES</option>
         </select>
       </label>
       <label class="f"><span>Spread (asset type)</span>
@@ -131,10 +134,10 @@
           <option value="Crypto">Crypto</option>
         </select>
       </label>
-      <label class="f"><span>Commission per contract ($)</span>
+      <label class="f"><span>Commission per contract ($) &mdash; blank uses the export's own Commission column if it has one</span>
         <input type="number" id="comm" step="0.01" min="0" placeholder="0.00">
       </label>
-      <label class="f"><span>Fees per contract ($)</span>
+      <label class="f"><span>Fees per contract ($) &mdash; blank uses the export's own Fees column if it has one</span>
         <input type="number" id="fees" step="0.01" min="0" placeholder="0.00">
       </label>
       <label class="f"><span>Symbol overrides (one per line, FROM=TO)</span>
@@ -155,7 +158,8 @@
     </div>
     <div class="btns">
       <button class="b" id="convert" disabled>Convert</button>
-      <button class="b ghost" id="loadSample">Load sample data</button>
+      <button class="b ghost" id="loadSample">Load WealthCharts sample</button>
+      <button class="b ghost" id="loadSampleTS">Load Tradesea sample</button>
       <button class="b ghost" id="reset">Reset</button>
     </div>
   </div>
@@ -183,8 +187,10 @@
   </div>
 
   <footer>
-    Converts <code>mov_time</code> &rarr; Date/Time, sign of <code>exec_qty</code> &rarr; Buy/Sell, <code>|exec_qty|</code> &rarr; Quantity, <code>price_done</code> &rarr; Price.<br>
-    WealthCharts' <code>points</code> and <code>profit</code> columns are intentionally dropped &mdash; TradeZella recalculates P&amp;L from the executions.
+    <b>WealthCharts:</b> <code>mov_time</code> &rarr; Date/Time, sign of <code>exec_qty</code> &rarr; Buy/Sell, <code>|exec_qty|</code> &rarr; Quantity, <code>price_done</code> &rarr; Price.
+    <code>points</code> and <code>profit</code> are intentionally dropped &mdash; TradeZella recalculates P&amp;L from the executions.<br>
+    <b>Tradesea:</b> <code>Time</code> &rarr; Date/Time, <code>Side</code> &rarr; Buy/Sell, <code>Qty</code> &rarr; Quantity, <code>Avg Price</code> &rarr; Price, <code>Commission</code> &rarr; Commission.
+    Only rows with Status <code>Filled</code> are used; <code>CME:MES</code> becomes <code>MES</code>.
   </footer>
 </div>
 
@@ -233,11 +239,42 @@ function parseWCTime(s){
       return new Date(utc-off*60000);
     }
   }
-  var d=new Date(s);
-  return isNaN(d.getTime())?null:d;
+  return null;
+}
+/* Tradesea: "10/7/2026, 8:49:04 AM PDT" (US month/day order, optional seconds, optional zone) */
+var TZABBR={UTC:0,GMT:0,Z:0,EST:-300,EDT:-240,CST:-360,CDT:-300,MST:-420,MDT:-360,PST:-480,PDT:-420,
+  AKST:-540,AKDT:-480,HST:-600,BST:60,CET:60,CEST:120,EET:120,EEST:180,AEST:600,AEDT:660};
+function parseTSTime(s,tz){
+  var m=s.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4}),?\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?\s*([A-Za-z]{1,5}|[+-]\d{2}:?\d{2})?$/);
+  if(!m) return null;
+  var y=+m[3],mo=+m[1]-1,day=+m[2],h=+m[4],mi=+m[5],sec=+(m[6]||0);
+  if(mo<0||mo>11||day<1||day>31||h>23||mi>59||sec>59) return null;
+  if(m[7]){ h=h%12; if(m[7].toUpperCase()==='PM') h+=12; }
+  var zone=m[8], off=null;
+  if(zone){
+    var z=zone.toUpperCase(), zm=z.match(/^([+-])(\d{2}):?(\d{2})$/);
+    if(zm) off=(zm[1]==='-'?-1:1)*((+zm[2])*60+(+zm[3]));
+    else if(TZABBR[z]!==undefined) off=TZABBR[z];
+  }
+  if(off!==null) return {date:new Date(Date.UTC(y,mo,day,h,mi,sec)-off*60000),naive:false};
+  return {date:zonedToUTC(y,mo,day,h,mi,sec,tz),naive:true};
+}
+/* Any timestamp -> {date, naive}. Naive (zone-less) times are read in the output time zone. */
+function parseTime(s,tz){
+  s=String(s||'').trim();
+  if(!s) return null;
+  var d=parseWCTime(s);
+  if(d) return {date:d,naive:false};
+  var t=parseTSTime(s,tz);
+  if(t) return t;
+  d=new Date(s);
+  if(isNaN(d.getTime())) return null;
+  if(/(Z|GMT|UTC|[+-]\d{2}:?\d{2})\s*$/i.test(s)) return {date:d,naive:false};
+  // No zone marker: re-read the wall-clock parts in the output zone instead of the browser's.
+  return {date:zonedToUTC(d.getFullYear(),d.getMonth(),d.getDate(),d.getHours(),d.getMinutes(),d.getSeconds(),tz),naive:true};
 }
 var fmtCache={};
-function fmtParts(d,tz){
+function tzParts(d,tz){
   if(!fmtCache[tz]) fmtCache[tz]=new Intl.DateTimeFormat('en-US',{
     timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit',
     hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'
@@ -245,6 +282,21 @@ function fmtParts(d,tz){
   var p=fmtCache[tz].formatToParts(d),o={};
   p.forEach(function(x){ o[x.type]=x.value; });
   if(o.hour==='24') o.hour='00';
+  return o;
+}
+/* Wall-clock parts in an IANA zone -> instant (DST-aware). */
+function zonedToUTC(y,mo,day,h,mi,s,tz){
+  function off(t){
+    var o=tzParts(new Date(t),tz);
+    return (Date.UTC(+o.year,+o.month-1,+o.day,+o.hour,+o.minute,+o.second)-t)/60000;
+  }
+  var guess=Date.UTC(y,mo,day,h,mi,s);
+  var o1=off(guess), t=guess-o1*60000, o2=off(t);
+  if(o2!==o1) t=guess-o2*60000;
+  return new Date(t);
+}
+function fmtParts(d,tz){
+  var o=tzParts(d,tz);
   return {
     date:o.month+'/'+o.day+'/'+o.year.slice(-2),
     time:o.hour+':'+o.minute+':'+o.second,
@@ -264,8 +316,10 @@ function trimNum(n,dp){
 function cleanSymbol(raw,style,overrides){
   var s=String(raw||'').trim().toUpperCase();
   if(style!=='raw'){
-    var dot=s.lastIndexOf('.');
-    if(dot>-1 && dot<s.length-1) s=s.slice(dot+1);
+    // exchange prefix: WealthCharts "CM.MESZ6", Tradesea "CME:MES"
+    var cut=Math.max(s.lastIndexOf('.'),s.lastIndexOf(':'));
+    if(cut>-1 && cut<s.length-1) s=s.slice(cut+1);
+    s=s.replace(/\d!$/,'');            // continuous-contract suffix "MES1!"
   }
   if(style==='root'){
     var m=s.match(/^([A-Z]{1,4})[FGHJKMNQUVXZ]\d{1,2}$/);
@@ -328,25 +382,52 @@ function loadSettings(){
 var HEADERS=['Date&Time','Date','Time','Symbol','Buy/Sell','Quantity','Price','Spread','Expiration','Strike','Call/Put','Commission','Fees'];
 var ALIASES={
   symbol:['symbol','ticker','instrument','contract'],
-  time:['mov_time','movtime','time','datetime','date_time','fill_time','exec_time','timestamp'],
-  qty:['exec_qty','execqty','qty','quantity','size','filled_qty','volume'],
-  price:['price_done','pricedone','price','fill_price','avg_price','exec_price'],
+  time:['mov_time','movtime','time','datetime','date_time','fill_time','exec_time','timestamp','filled_time'],
+  qty:['exec_qty','execqty','filled_qty','qty','quantity','size','volume'],
+  price:['price_done','pricedone','avg_price','fill_price','exec_price','price'],
+  fallbackPrice:['limit_price'],
+  side:['side','buy/sell','buy_sell','action','direction'],
+  status:['status','order_status'],
+  commission:['commission','commissions','comm'],
+  fees:['fees','fee'],
   id:['order_id','orderid','id','trade_id','execution_id'],
   fallbackTime:['created_on','createdon','date']
 };
+var SOURCE_NAMES={wealthcharts:'WealthCharts',tradesea:'Tradesea'};
+function normHeader(h){ return String(h||'').replace(/^﻿/,'').trim().toLowerCase().replace(/\s+/g,'_'); }
 function mapHeader(head){
-  var idx={},lower=head.map(function(h){ return String(h||'').trim().toLowerCase(); });
+  var idx={},lower=head.map(normHeader);
   Object.keys(ALIASES).forEach(function(k){
     for(var i=0;i<ALIASES[k].length;i++){
       var p=lower.indexOf(ALIASES[k][i]);
       if(p>-1){ idx[k]=p; return; }
     }
   });
+  idx._lower=lower;
   return idx;
+}
+/* Which platform produced this header? */
+function detectSource(idx){
+  var l=idx._lower||[];
+  if(l.indexOf('mov_time')>-1 || l.indexOf('exec_qty')>-1 || l.indexOf('price_done')>-1) return 'wealthcharts';
+  if(idx.side!==undefined && idx.symbol!==undefined && idx.qty!==undefined && idx.price!==undefined) return 'tradesea';
+  return null;
+}
+function sniff(text){
+  var first=String(text||'').replace(/^﻿/,'').split(/\r?\n/)[0]||'';
+  var rows=parseCSV(first);
+  return rows.length ? detectSource(mapHeader(rows[0])) : null;
+}
+function parseSide(v){
+  var s=String(v||'').trim().toLowerCase();
+  if(/^(b|buy|bot|bought|long|buy to open|buy to close)$/.test(s)) return 'Buy';
+  if(/^(s|sell|sld|sold|short|sell to open|sell to close|sell short)$/.test(s)) return 'Sell';
+  return null;
 }
 
 function convert(sources,opts){
-  var out=[],errors=[],warnings=[],seen={},dupes=0,skippedLedger=0,skippedBad=0,total=0;
+  var out=[],errors=[],warnings=[],seen={},sourcesSeen={};
+  var dupes=0,skippedLedger=0,skippedBad=0,skippedStatus=0,naive=0,total=0;
   var overrides=parseOverrides(opts.overrides);
   var ledgerSet={};
   if(opts.useLedger) ledgerGet().forEach(function(id){ ledgerSet[id]=1; });
@@ -354,51 +435,78 @@ function convert(sources,opts){
   sources.forEach(function(src){
     var rows=parseCSV(src.text);
     if(!rows.length){ errors.push(src.name+': file is empty.'); return; }
-    var head=rows[0], idx=mapHeader(head);
-    if(idx.symbol===undefined || idx.qty===undefined || idx.price===undefined){
-      errors.push(src.name+': could not find the required columns (symbol, exec_qty, price_done). Header was: '+head.join(', '));
+    var head=rows[0], idx=mapHeader(head), source=detectSource(idx);
+    if(!source || idx.symbol===undefined || idx.qty===undefined || idx.price===undefined){
+      errors.push(src.name+': not a WealthCharts or Tradesea export - could not find the required columns '+
+        '(WealthCharts: symbol, exec_qty, price_done; Tradesea: Symbol, Qty, Side, Avg Price). Header was: '+head.join(', '));
       return;
     }
     if(idx.time===undefined && idx.fallbackTime===undefined){
-      errors.push(src.name+': no timestamp column (mov_time) found.');
+      errors.push(src.name+': no timestamp column (mov_time / Time) found.');
       return;
     }
+    sourcesSeen[source]=1;
+    var local={};   // occurrence counter so two genuinely identical fills in one file are both kept
     rows.slice(1).forEach(function(r,n){
       total++;
       var line=n+2;
+
+      if(idx.status!==undefined){
+        var st=String(r[idx.status]||'').trim().toLowerCase();
+        if(st && st!=='filled' && st!=='fill' && st!=='executed' && st!=='complete'){ skippedStatus++; return; }
+      }
+
       var rawTime = (idx.time!==undefined) ? r[idx.time] : '';
       if(!String(rawTime||'').trim() && idx.fallbackTime!==undefined) rawTime=r[idx.fallbackTime];
-      var d=parseWCTime(rawTime);
+      var pt=parseTime(rawTime,opts.tz);
+      var d=pt?pt.date:null;
       var qty=num(r[idx.qty]);
       var price=num(r[idx.price]);
-      var sym=cleanSymbol(r[idx.symbol],opts.symstyle,overrides);
+      if(price===null && idx.fallbackPrice!==undefined) price=num(r[idx.fallbackPrice]);
+      var rawSym=String(r[idx.symbol]||'').trim().toUpperCase();
+      var sym=cleanSymbol(rawSym,opts.symstyle,overrides);
       var oid=(idx.id!==undefined) ? String(r[idx.id]||'').trim() : '';
+      var side = (idx.side!==undefined) ? parseSide(r[idx.side])
+               : (qty===null||qty===0) ? null : (qty>0?'Buy':'Sell');
 
-      if(!d || qty===null || qty===0 || price===null || !sym){
+      if(!d || qty===null || qty===0 || price===null || !sym || !side){
         skippedBad++;
         if(warnings.length<6){
           var why = !d ? 'unreadable timestamp "'+String(rawTime).slice(0,42)+'"'
             : (qty===null||qty===0) ? ('quantity is '+(qty===null?'not a number':'zero'))
-            : (price===null) ? 'price is not a number' : 'missing symbol';
+            : (price===null) ? 'price is not a number'
+            : (!sym) ? 'missing symbol'
+            : 'unrecognised side "'+String(r[idx.side]).slice(0,20)+'"';
           warnings.push(src.name+' line '+line+': skipped, '+why+'.');
         }
         return;
       }
-
-      var p=fmtParts(d,opts.tz);
-      var key=oid||(p.iso+'|'+p.time+'|'+sym+'|'+qty+'|'+price);
-      if(seen[key]){ dupes++; return; }
-      seen[key]=1;
-      if(opts.useLedger && oid && ledgerSet[oid]){ skippedLedger++; return; }
+      if(pt.naive) naive++;
 
       var q=Math.abs(qty);
+      var key=oid;
+      if(!key){
+        var base=d.toISOString()+'|'+rawSym+'|'+side+'|'+trimNum(q,4)+'|'+trimNum(price,6);
+        local[base]=(local[base]||0)+1;
+        key=base+'#'+local[base];
+      }
+      if(seen[key]){ dupes++; return; }
+      seen[key]=1;
+      if(opts.useLedger && ledgerSet[key]){ skippedLedger++; return; }
+
+      // Setting wins when filled in; otherwise use the export's own column; otherwise blank.
+      var comm='', fee='', v;
+      if(opts.comm>0) comm=trimNum(opts.comm*q,2);
+      else if(idx.commission!==undefined && (v=num(r[idx.commission]))!==null && v>0) comm=trimNum(v,2);
+      if(opts.fees>0) fee=trimNum(opts.fees*q,2);
+      else if(idx.fees!==undefined && (v=num(r[idx.fees]))!==null && v>0) fee=trimNum(v,2);
+
+      var p=fmtParts(d,opts.tz);
       out.push({
-        ts:d.getTime(), oid:oid, isoDay:p.iso,
+        ts:d.getTime(), key:key, oid:oid, isoDay:p.iso, source:source,
         date:p.date, time:p.time, symbol:sym,
-        side:(qty>0?'Buy':'Sell'), qty:trimNum(q,4), price:trimNum(price,6),
-        spread:opts.spread,
-        commission:(opts.comm>0 ? trimNum(opts.comm*q,2) : ''),
-        fees:(opts.fees>0 ? trimNum(opts.fees*q,2) : '')
+        side:side, qty:trimNum(q,4), price:trimNum(price,6),
+        spread:opts.spread, commission:comm, fees:fee
       });
     });
   });
@@ -420,9 +528,12 @@ function convert(sources,opts){
     }
   });
   if(dupes) warnings.push(dupes+' duplicate row'+(dupes===1?'':'s')+' removed.');
+  if(skippedStatus) warnings.push(skippedStatus+' order'+(skippedStatus===1?'':'s')+' skipped - not filled (cancelled, rejected, or still working).');
   if(skippedLedger) warnings.push(skippedLedger+' fill'+(skippedLedger===1?'':'s')+' skipped - already exported previously.');
+  if(naive) warnings.push(naive+' timestamp'+(naive===1?'':'s')+' had no time zone - read as '+opts.tz+' (the output time zone).');
 
-  return {rows:out,errors:errors,warnings:warnings,total:total,skippedBad:skippedBad,skippedLedger:skippedLedger,dupes:dupes};
+  return {rows:out,errors:errors,warnings:warnings,total:total,skippedBad:skippedBad,skippedStatus:skippedStatus,
+    skippedLedger:skippedLedger,dupes:dupes,sources:Object.keys(sourcesSeen)};
 }
 
 function toCSV(rows){
@@ -435,7 +546,7 @@ function toCSV(rows){
 }
 
 /* expose for tests */
-window.WC2TZ={parseCSV:parseCSV,parseWCTime:parseWCTime,convert:convert,toCSV:toCSV,cleanSymbol:cleanSymbol,fmtParts:fmtParts};
+window.WC2TZ={parseCSV:parseCSV,parseWCTime:parseWCTime,parseTime:parseTime,convert:convert,toCSV:toCSV,cleanSymbol:cleanSymbol,fmtParts:fmtParts,detectSource:detectSource,sniff:sniff};
 
 /* ---------- UI ---------- */
 var FILES=[], RESULT=null;
@@ -448,11 +559,16 @@ function renderFiles(){
   FILES.forEach(function(f,i){
     var li=document.createElement('li');
     var span=document.createElement('span');
+    span.className='name';
     span.textContent=f.name+'  -  '+Math.max(1,Math.round(f.text.length/1024))+' KB';
+    var badge=document.createElement('span');
+    var src=sniff(f.text);
+    badge.className='badge'+(src?'':' unknown');
+    badge.textContent=src ? SOURCE_NAMES[src] : 'unrecognised format';
     var b=document.createElement('button');
     b.className='x'; b.type='button'; b.textContent='✕'; b.title='Remove';
     b.onclick=function(e){ e.stopPropagation(); FILES.splice(i,1); renderFiles(); if(FILES.length) run(); else $('out').classList.add('hidden'); };
-    li.appendChild(span); li.appendChild(b); ul.appendChild(li);
+    li.appendChild(span); li.appendChild(badge); li.appendChild(b); ul.appendChild(li);
   });
   $('convert').disabled = (FILES.length===0);
 }
@@ -487,14 +603,15 @@ function run(){
   $('stats').innerHTML=
     '<div class="stat"><b>'+r.rows.length+'</b><span>executions out</span></div>'+
     '<div class="stat"><b>'+r.total+'</b><span>rows read</span></div>'+
-    '<div class="stat"><b>'+(r.dupes+r.skippedBad+r.skippedLedger)+'</b><span>rows skipped</span></div>'+
+    '<div class="stat"><b>'+(r.dupes+r.skippedBad+r.skippedStatus+r.skippedLedger)+'</b><span>rows skipped</span></div>'+
     '<div class="stat"><b>'+symCount+'</b><span>symbols</span></div>';
 
   var m=$('messages'); m.innerHTML='';
   r.errors.forEach(function(e){ m.appendChild(msg('err',esc(e))); });
   if(r.rows.length){
     var tzName=$('tz').options[$('tz').selectedIndex].textContent;
-    m.appendChild(msg('info','In TradeZella set <b>Time zone = '+esc(tzName)+'</b> and <b>Date Format = MM/DD/YY</b>, then upload under <b>Execution-based format</b>.'));
+    var srcNames=r.sources.map(function(s){ return SOURCE_NAMES[s]||s; }).join(' + ');
+    m.appendChild(msg('info','Converted from <b>'+esc(srcNames)+'</b>. In TradeZella set <b>Time zone = '+esc(tzName)+'</b> and <b>Date Format = MM/DD/YY</b>, then upload under <b>Execution-based format</b>.'));
   }
   r.warnings.forEach(function(w){ m.appendChild(msg('warn',esc(w))); });
   if(!r.rows.length && !r.errors.length) m.appendChild(msg('warn','No executions to convert - everything was filtered out.'));
@@ -525,10 +642,10 @@ function doDownload(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(function(){ URL.revokeObjectURL(url); },1500);
   if($('ledger').checked){
-    ledgerAdd(RESULT.rows.map(function(r){ return r.oid; }).filter(Boolean));
+    ledgerAdd(RESULT.rows.map(function(r){ return r.key; }).filter(Boolean));
   }
   $('messages').appendChild(msg('ok','Downloaded <b>'+esc(name)+'</b>'+
-    ($('ledger').checked?' - these order IDs are now remembered and will be skipped next time.':'')));
+    ($('ledger').checked?' - these fills are now remembered and will be skipped next time.':'')));
 }
 function fallbackCopy(txt){
   var ta=document.createElement('textarea');
@@ -574,6 +691,16 @@ $('loadSample').addEventListener('click',function(){
     'DEMO000001,ORD-1003,CM.MESZ6,Tue Aug 25 2026 08:28:43 GMT-0700 (Pacific Daylight Time),2,-2,7686,7.75,38.75,2026-08-25T14:52:21.000Z\n'+
     'DEMO000001,ORD-1002,CM.MESZ6,Tue Aug 25 2026 08:19:47 GMT-0700 (Pacific Daylight Time),2,-1,7682,3.75,18.75,2026-08-25T14:52:21.000Z\n'+
     'DEMO000001,ORD-1001,CM.MESZ6,Tue Aug 25 2026 07:52:22 GMT-0700 (Pacific Daylight Time),1,3,7678.25,,,2026-08-25T14:52:21.000Z\n'});
+  renderFiles(); run();
+});
+$('loadSampleTS').addEventListener('click',function(){
+  FILES.push({name:'sample-tradesea.csv',text:
+    '"Time","Symbol","Qty","Side","Order Type","Limit Price","Stop Price","Avg Price","Commission","Status"\n'+
+    '"9/15/2026, 6:45:30 AM PDT","CME:MES","1","Sell","Limit","6510","","6510","0.5","Filled"\n'+
+    '"9/15/2026, 6:40:00 AM PDT","CME:MES","1","Sell","Limit","6504","","6504","0.5","Filled"\n'+
+    '"9/15/2026, 6:40:00 AM PDT","CME:MES","1","Sell","Limit","6504","","6504","0.5","Filled"\n'+
+    '"9/15/2026, 6:38:12 AM PDT","CME:MES","1","Buy","Limit","6490","","","","Cancelled"\n'+
+    '"9/15/2026, 6:31:10 AM PDT","CME:MES","3","Buy","Market","","","6500.25","1.5","Filled"\n'});
   renderFiles(); run();
 });
 $('clearLedger').addEventListener('click',function(e){
